@@ -155,11 +155,12 @@ class PinPadDiscrete(gym.Env):
             f"Target pad index {target_pad_idx} is out of range for {len(self.pads)} pads"
         )
         self.target_pad = self.pads[target_pad_idx]
-        self.goal = self._get_goal(self.target_pad)
+        self.target_position = self._get_target_position(self.target_pad)
+        self.goal = self.render(player_position=self.target_position)
 
         # Gets return values
         obs = self.render()
-        info = {'agent_position': np.array(self.player), 'goal': self.goal}
+        info = self._get_info()
         return obs, info
 
     def step(self, action):
@@ -180,17 +181,25 @@ class PinPadDiscrete(gym.Env):
         obs = self.render()
         terminated = tile == self.target_pad
         truncated = False
-        info = {'agent_position': np.array(self.player), 'goal': self.goal}
+        info = self._get_info()
         return obs, reward, terminated, truncated, info
 
-    def _get_goal(self, target_pad):
+    def _get_target_position(self, target_pad):
         target_cells = list(zip(*np.where(self.layout == target_pad)))
         center_cell = (self.X_BOUND // 2, self.Y_BOUND // 2)
         farthest_idx = np.argmax(
             np.linalg.norm(np.array(target_cells) - np.array(center_cell), axis=1)
         )
         farthest_from_center = target_cells[farthest_idx]
-        return self.render(player_position=farthest_from_center)
+        return farthest_from_center
+
+    def _get_info(self):
+        info = {
+            'agent_position': np.array(self.player),
+            'target_position': np.array(self.target_position),
+            'goal': self.goal,
+        }
+        return info
 
     def render(self, player_position=None):
         # Sets up grid
