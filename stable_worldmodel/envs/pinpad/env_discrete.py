@@ -6,6 +6,14 @@ import numpy as np
 from loguru import logger as logging
 import cv2
 
+from stable_worldmodel import spaces as swm_spaces
+
+
+DEFAULT_VARIATIONS = (
+    'agent.spawn',
+    'agent.target_pad',
+)
+
 
 # TODO: Re-enable targets to be sequences of pads instead of single pads
 class PinPadDiscrete(gym.Env):
@@ -22,9 +30,64 @@ class PinPadDiscrete(gym.Env):
     }
     X_BOUND = 16
     Y_BOUND = 16
+    RENDER_SCALE = 14
 
-    def __init__(self, task, target_pad='1', seed=None):
-        # Sets up grid
+    def __init__(self, seed=None, init_value=None):
+        # Task mapping for Discrete space
+        self.task_names = ['three', 'four', 'five', 'six', 'seven', 'eight']
+        
+        # Build variation space
+        self.variation_space = self._build_variation_space()
+        if init_value is not None:
+            self.variation_space.set_init_value(init_value)
+
+        # To be initialized in reset()
+        self.task = None
+        self.layout = None
+        self.pads = None
+        self.spawns = None
+        self.player = None
+        self.target_pad = None
+
+    def _build_variation_space(self):
+        # Spawn locations don't include walls
+        max_spawns = self.X_BOUND * self.Y_BOUND - 2 * (self.X_BOUND + self.Y_BOUND - 2)
+        
+        return swm_spaces.Dict(
+            {
+                'agent': swm_spaces.Dict(
+                    {
+                        'spawn': swm_spaces.Discrete(
+                            n=max_spawns,
+                            start=0,
+                            init_value=0,
+                        ),
+                        # The number of pads is dynamic based on the task,
+                        # so we generate the index as a float in [0, 1) and then
+                        # scale it to the number of pads before truncating it to an int
+                        'target_pad': swm_spaces.Box(
+                            low=0.0,
+                            high=1.0,
+                            init_value=0.0,
+                            shape=(),
+                            dtype=np.float32,
+                        ),
+                    }
+                ),
+                'grid': swm_spaces.Dict(
+                    {
+                        'task': swm_spaces.Discrete(
+                            n=len(self.task_names),
+                            start=0,
+                            init_value=0,  # 0 = 'three', 5 = 'eight'
+                        ),
+                    }
+                ),
+            },
+            sampling_order=['grid', 'agent'],
+        )
+
+    def _setup_layout(self, task):
         layout = {
             'three': LAYOUT_THREE,
             'four': LAYOUT_FOUR,
@@ -38,19 +101,12 @@ class PinPadDiscrete(gym.Env):
             f"Layout shape should be ({self.X_BOUND}, {self.Y_BOUND}), got {self.layout.shape}"
         )
 
-        # Sets up pads and spawns
-        self.pads = set(self.layout.flatten().tolist()) - set('* #\n')
+    def _setup_pads_and_spawns(self):
+        self.pads = sorted(list(set(self.layout.flatten().tolist()) - set('* #\n')))
         self.spawns = []
         for (x, y), char in np.ndenumerate(self.layout):
             if char != '#':
                 self.spawns.append((x, y))
-        self.target_pad = target_pad
-
-        # To be initialized in reset()
-        self.player = None
-
-        # Miscellaneous
-        self.random = np.random.RandomState(seed)
 
     @property
     def action_space(self):
@@ -58,13 +114,47 @@ class PinPadDiscrete(gym.Env):
 
     @property
     def observation_space(self):
-        return gym.spaces.Box(low=0, high=255, shape=(64, 64, 3), dtype=np.uint8)
+        return gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.X_BOUND * self.RENDER_SCALE, self.Y_BOUND * self.RENDER_SCALE, 3),
+            dtype=np.uint8,
+        )
 
     def reset(self, seed=None, options=None):
-        # Selects player location
-        if seed is not None:
-            self.random = np.random.RandomState(seed)
-        self.player = self.spawns[self.random.randint(len(self.spawns))]
+        super().reset(seed=seed, options=options)
+        
+        # Reset variation space
+        options = options or {}
+        swm_spaces.reset_variation_space(
+            self.variation_space,
+            seed,
+            options,
+            DEFAULT_VARIATIONS,
+        )
+        
+        # Update task if it changed or if this is the first reset
+        task_idx = int(self.variation_space['grid']['task'].value)
+        new_task = self.task_names[task_idx]
+        if new_task != self.task or self.task is None:
+            self.task = new_task
+            self._setup_layout(self.task)
+            self._setup_pads_and_spawns()
+        
+        # Set player position from variation space (index into spawns)
+        spawn_idx = int(self.variation_space['agent']['spawn'].value)
+        assert spawn_idx >= 0 and spawn_idx < len(self.spawns), (
+            f"Spawn index {spawn_idx} is out of range for {len(self.spawns)} spawns"
+        )
+        self.player = self.spawns[spawn_idx]
+        
+        # Set target pad from variation space using linear binning
+        target_pad_value = float(self.variation_space['agent']['target_pad'].value)
+        target_pad_idx = int(target_pad_value * len(self.pads))
+        assert target_pad_idx >= 0 and target_pad_idx < len(self.pads), (
+            f"Target pad index {target_pad_idx} is out of range for {len(self.pads)} pads"
+        )
+        self.target_pad = self.pads[target_pad_idx]
 
         # Gets return values
         obs = self.render()
@@ -109,7 +199,7 @@ class PinPadDiscrete(gym.Env):
         grid[self.player] = (0, 0, 0)
 
         # Scales up
-        image = np.repeat(np.repeat(grid, 14, 0), 14, 1)
+        image = np.repeat(np.repeat(grid, self.RENDER_SCALE, 0), self.RENDER_SCALE, 1)
         return image.transpose((1, 0, 2))
 
 
@@ -233,11 +323,12 @@ if __name__ == '__main__':
     from pathlib import Path
     from tqdm import tqdm
     
-    env = PinPadDiscrete(task='three')
+    env = PinPadDiscrete()
     logging.info("Made env")
 
     obs, info = env.reset()
     logging.info(f"Called reset(), and got obs.shape: {obs.shape}")
+    logging.info(f"Task: {env.task}, target pad: {env.target_pad}, player position: {env.player}")
     frames = [obs]
     
     for i in tqdm(range(3000), desc="Collecting data"):
