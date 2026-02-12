@@ -10,7 +10,7 @@ def run(cfg):
     """Run data collection script"""
 
     world = swm.World('swm/PinPad-Discrete-v0', **cfg.world)
-    world.set_policy(swm.policy.RandomPolicy(seed=cfg.seed))
+    world.set_policy(swm.envs.pinpad.ExpertPolicyDiscrete())
     logging.info(f"Set world's policy to random policy with seed {cfg.seed}")
 
     logging.info(f'Collecting data for {cfg.num_traj} trajectories')
