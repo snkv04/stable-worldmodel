@@ -1,5 +1,4 @@
 import gymnasium as gym
-from loguru import logger as logging
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -124,7 +123,6 @@ class PinPad(gym.Env):
         # Set player position directly from variation space
         spawn_position = self.variation_space['agent']['spawn'].value
         self.player = tuple(spawn_position)
-        logging.info(f"Initial player position: {self.player}")
         
         # Set target pad from variation space using linear binning
         target_pad_value = float(self.variation_space['agent']['target_pad'].value)
@@ -134,8 +132,6 @@ class PinPad(gym.Env):
         )
         self.target_pad = self.pads[target_pad_idx]
         self.target_position = self._get_target_position(self.target_pad)
-        logging.info(f"Set target pad to: {self.target_pad}")
-        logging.info(f"Set target position to: {self.target_position}")
         self.goal = self.render(player_position=self.target_position)
 
         # Gets return values
@@ -145,12 +141,9 @@ class PinPad(gym.Env):
 
     def step(self, action):
         # Moves player
-        # logging.info(f"Action in step(): {action}")
         x = np.clip(self.player[0] + action[0], 1.5, X_BOUND - 1.5)
         y = np.clip(self.player[1] + action[1], 1.5, Y_BOUND - 1.5)
-        # logging.info(f"New player position: ({x}, {y})")
         tile = self.layout[int(x)][int(y)]
-        # logging.info(f"Tile: {tile}")
         if tile != '#':  # TODO: Add linear interpolation in case of wall collision
             self.player = (float(x), float(y))
         
@@ -165,22 +158,16 @@ class PinPad(gym.Env):
 
     def _get_target_position(self, target_pad):
         target_cells = np.array(list(zip(*np.where(self.layout == target_pad))), dtype=np.float64)
-        # logging.info(f"Target cells: {target_cells}")
         target_cell_centers = target_cells + 0.5
-        # logging.info(f"Target cell centers: {target_cell_centers}")
         center_cell = np.array([X_BOUND / 2, Y_BOUND / 2], dtype=np.float64)
-        # logging.info(f"Center cell: {center_cell}")
         farthest_idx = np.argmax(
             np.linalg.norm(target_cell_centers - center_cell, axis=1)
         )
-        # logging.info(f"Farthest index: {farthest_idx}")
         farthest_from_center = target_cell_centers[farthest_idx]
-        # logging.info(f"Farthest from center: {farthest_from_center}")
         return farthest_from_center
 
     def _agent_in_target_pad(self, player, target_pad):
         # Gets all cells that overlap with the agent
-        # logging.info(f"Player: {player}")
         corner_deltas = np.array([
             (-0.5, -0.5),
             (-0.5, 0.5),
@@ -188,22 +175,16 @@ class PinPad(gym.Env):
             (0.5, 0.5),
         ], dtype=np.float64)
         corner_positions = player + corner_deltas
-        # logging.info(f"Corner positions: {corner_positions}")
         distinct_corner_positions = [tuple(pos) for pos in np.unique(corner_positions.astype(int), axis=0)]
-        # logging.info(f"Distinct corner positions: {distinct_corner_positions}")
 
         # Gets all cells from the target pad
-        # logging.info(f"Target pad: {target_pad}")
         target_cells = np.array(list(zip(*np.where(self.layout == target_pad))), dtype=np.float64)
         target_cells = [tuple(pos) for pos in target_cells.astype(int)]
-        # logging.info(f"Target cells: {target_cells}")
 
         # Checks that the agent is entirely within the target pad
         for pos in distinct_corner_positions:
             if pos not in target_cells:
-                # logging.info(f"Position {pos} is not in target cells")
                 return False
-        # logging.info(f"Agent is entirely within the target pad")
         return True
 
     def _get_info(self):
@@ -243,7 +224,6 @@ class PinPad(gym.Env):
             ],
             fill=(0, 0, 0),  # Agent is black
         )
-        # logging.info("Drew agent")
         image = np.asarray(image_pil)
 
         # Scales up
