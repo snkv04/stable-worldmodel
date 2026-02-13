@@ -32,7 +32,7 @@ world = swm.World('swm/PinPadDiscrete-v0', num_envs=4, image_shape=(224, 224))
 
 ## Environment Specs
 
-### Continuous Action Space (PinPad-v0)
+### Continuous Action Space (`PinPad-v0`)
 
 | Property | Value |
 |----------|-------|
@@ -63,7 +63,7 @@ The `info` dict returned by `step()` and `reset()` contains:
 | `goal` | Goal image (224, 224, 3) showing the target pad highlighted with the agent on it|
 | `goal_position` | Position (x, y) of the farthest cell in target pad from center |
 
-### Discrete Action Space (PinPadDiscrete-v0)
+### Discrete Action Space (`PinPadDiscrete-v0`)
 
 | Property | Value |
 |----------|-------|
