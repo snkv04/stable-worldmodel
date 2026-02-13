@@ -28,7 +28,7 @@ def run(cfg):
 
     dataset = swm.data.HDF5Dataset(
         name=dataset_name,
-        keys_to_load=['pixels', 'action', 'observation'],
+        keys_to_load=['pixels', 'agent_position', 'action'],
     )
     logging.info(f'Loaded dataset from {dataset.h5_path}')
     swm.utils.record_video_from_dataset(

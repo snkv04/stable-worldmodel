@@ -2,8 +2,8 @@ import numpy as np
 from stable_worldmodel.policy import BasePolicy
 
 
-def compute_action_discrete(agent_position, target_position):
-    dx, dy = (target_position - agent_position).tolist()
+def compute_action_discrete(agent_position, goal_position):
+    dx, dy = (goal_position - agent_position).tolist()
     if abs(dx) + abs(dy):
         # Gets directions we need to move in (in the transposed space)
         possible_actions = []
@@ -28,8 +28,8 @@ def compute_action_discrete(agent_position, target_position):
     return action
 
 
-def compute_action_continuous(agent_position, target_position, max_norm, add_noise):
-    delta = target_position - agent_position
+def compute_action_continuous(agent_position, goal_position, max_norm, add_noise):
+    delta = goal_position - agent_position
     if add_noise:
         delta = delta + np.random.normal(0, 1, delta.shape)
 
@@ -58,26 +58,26 @@ def get_action(info_dict, env, env_type, **kwargs):
             agent_position = np.asarray(
                 info_dict['agent_position'][i], dtype=dtype
             ).squeeze()
-            target_position = np.asarray(
-                info_dict['target_position'][i], dtype=dtype
+            goal_position = np.asarray(
+                info_dict['goal_position'][i], dtype=dtype
             ).squeeze()
         else:
             agent_position = np.asarray(
                 info_dict['agent_position'], dtype=dtype
             ).squeeze()
-            target_position = np.asarray(
-                info_dict['target_position'], dtype=dtype
+            goal_position = np.asarray(
+                info_dict['goal_position'], dtype=dtype
             ).squeeze()
 
         if env_type == 'discrete':
             actions.append(
-                compute_action_discrete(agent_position, target_position)
+                compute_action_discrete(agent_position, goal_position)
             )
         elif env_type == 'continuous':
             actions.append(
                 compute_action_continuous(
                     agent_position,
-                    target_position,
+                    goal_position,
                     kwargs['max_norm'],
                     kwargs['add_noise'],
                 )
@@ -101,8 +101,8 @@ class ExpertPolicyDiscrete(BasePolicy):
         assert 'agent_position' in info_dict, (
             'Agent position must be provided in info_dict'
         )
-        assert 'target_position' in info_dict, (
-            'Target position must be provided in info_dict'
+        assert 'goal_position' in info_dict, (
+            'Goal position must be provided in info_dict'
         )
 
         return get_action(info_dict, self.env, 'discrete', **kwargs)
@@ -122,8 +122,8 @@ class ExpertPolicy(BasePolicy):
         assert 'agent_position' in info_dict, (
             'Agent position must be provided in info_dict'
         )
-        assert 'target_position' in info_dict, (
-            'Target position must be provided in info_dict'
+        assert 'goal_position' in info_dict, (
+            'Goal position must be provided in info_dict'
         )
 
         kwargs['max_norm'] = self.max_norm

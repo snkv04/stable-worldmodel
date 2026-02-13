@@ -31,6 +31,23 @@ class PinPadDiscrete(gym.Env):
         if init_value is not None:
             self.variation_space.set_init_value(init_value)
 
+        # Other spaces
+        self.observation_space = gym.spaces.Dict({
+            'image': gym.spaces.Box(
+                low=0,
+                high=255,
+                shape=(Y_BOUND * RENDER_SCALE, X_BOUND * RENDER_SCALE, 3),
+                dtype=np.uint8,
+            ),
+            'agent_position': gym.spaces.Box(
+                low=np.array([0, 0], dtype=np.int64),
+                high=np.array([X_BOUND - 1, Y_BOUND - 1], dtype=np.int64),
+                shape=(2,),
+                dtype=np.int64,
+            ),
+        })
+        self.action_space = gym.spaces.Discrete(5)  # [0, 5)
+
         # To be initialized in reset()
         self.task = None
         self.layout = None
@@ -95,19 +112,6 @@ class PinPadDiscrete(gym.Env):
             if char != '#':
                 self.spawns.append((x, y))
 
-    @property
-    def action_space(self):
-        return gym.spaces.Discrete(5)  # [0, 5)
-
-    @property
-    def observation_space(self):
-        return gym.spaces.Box(
-            low=0,
-            high=255,
-            shape=(Y_BOUND * RENDER_SCALE, X_BOUND * RENDER_SCALE, 3),
-            dtype=np.uint8,
-        )
-
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
 
@@ -144,13 +148,19 @@ class PinPadDiscrete(gym.Env):
             f'Target pad index {target_pad_idx} is out of range for {len(self.pads)} pads'
         )
         self.target_pad = self.pads[target_pad_idx]
-        self.target_position = self._get_target_position(self.target_pad)
-        self.goal = self.render(player_position=self.target_position)
+        self.goal_position = self._get_goal_position(self.target_pad)
+        self.goal = self.render(player_position=self.goal_position)
 
         # Gets return values
-        obs = self.render()
+        obs = self._get_obs()
         info = self._get_info()
         return obs, info
+    
+    def _get_obs(self):
+        return {
+            'image': self.render(),
+            'agent_position': np.array(self.player, dtype=np.int64),
+        }
 
     def step(self, action):
         # Moves player
@@ -167,13 +177,13 @@ class PinPadDiscrete(gym.Env):
             reward += 10.0
 
         # Makes observation
-        obs = self.render()
+        obs = self._get_obs()
         terminated = tile == self.target_pad
         truncated = False
         info = self._get_info()
         return obs, reward, terminated, truncated, info
 
-    def _get_target_position(self, target_pad):
+    def _get_goal_position(self, target_pad):
         target_cells = list(zip(*np.where(self.layout == target_pad)))
         center_cell = (X_BOUND // 2, Y_BOUND // 2)
         farthest_idx = np.argmax(
@@ -186,8 +196,7 @@ class PinPadDiscrete(gym.Env):
 
     def _get_info(self):
         info = {
-            'agent_position': np.array(self.player),
-            'target_position': np.array(self.target_position),
+            'goal_position': np.array(self.goal_position),
             'goal': self.goal,
         }
         return info
