@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from stable_worldmodel import spaces as swm_spaces
+from stable_worldmodel.envs.pinpad import assets as pinpad_assets
 from stable_worldmodel.envs.pinpad.constants import (
     COLORS,
     X_BOUND,
@@ -16,6 +17,7 @@ from stable_worldmodel.envs.pinpad.constants import (
 DEFAULT_VARIATIONS = (
     'agent.spawn',
     'agent.target_pad',
+    'agent.visual',
 )
 
 
@@ -28,6 +30,7 @@ class PinPad(gym.Env):
         seed=None,
         init_value=None,
         render_mode='rgb_array',  # For backward compatibility; not used
+        use_images=True,
     ):
         # Build variation space
         self.variation_space = self._build_variation_space()
@@ -66,6 +69,7 @@ class PinPad(gym.Env):
         self.pads = None
         self.player = None
         self.target_pad = None
+        self.use_images = use_images
 
     def _build_variation_space(self):
         return swm_spaces.Dict(
@@ -93,6 +97,11 @@ class PinPad(gym.Env):
                             init_value=0.0,
                             shape=(),
                             dtype=np.float64,
+                        ),
+                        'visual': swm_spaces.Discrete(
+                            n=pinpad_assets.get_num_agent_images(),
+                            start=0,
+                            init_value=0,
                         ),
                     }
                 ),
@@ -240,13 +249,18 @@ class PinPad(gym.Env):
         return info
 
     def render(self, player_position=None):
-        # Sets up grid
-        grid = np.zeros((X_BOUND, Y_BOUND, 3), np.uint8) + 255
-        white = np.array([255, 255, 255])
         if player_position is None:
             player_position = self.player
 
-        # Colors all cells except agent
+        if self.use_images:
+            return self._render_with_images(player_position)
+        return self._render_with_colors(player_position)
+
+    def _render_with_colors(self, player_position):
+        """Original color-based rendering (pads as solid colors, agent as black dot)."""
+        grid = np.zeros((X_BOUND, Y_BOUND, 3), np.uint8) + 255
+        white = np.array([255, 255, 255])
+
         for (x, y), char in np.ndenumerate(self.layout):
             if char == '#':
                 grid[x, y] = (192, 192, 192)  # Gray
@@ -259,22 +273,70 @@ class PinPad(gym.Env):
                 )
                 grid[x, y] = color
 
-        # Scales up and transposes grid
         image = np.repeat(np.repeat(grid, RENDER_SCALE, 0), RENDER_SCALE, 1)
         image = image.transpose((1, 0, 2))
 
-        # Places agent with anti-aliasing
         image_pil = Image.fromarray(image, mode='RGB')
         draw = ImageDraw.Draw(image_pil)
         x, y = player_position
+        half = 0.5 * pinpad_assets.AGENT_SIZE_FACTOR
         draw.rectangle(
             [
-                (x - 0.5) * RENDER_SCALE,
-                (y - 0.5) * RENDER_SCALE,
-                (x + 0.5) * RENDER_SCALE,
-                (y + 0.5) * RENDER_SCALE,
+                (x - half) * RENDER_SCALE,
+                (y - half) * RENDER_SCALE,
+                (x + half) * RENDER_SCALE,
+                (y + half) * RENDER_SCALE,
             ],
-            fill=(0, 0, 0),  # Agent is black
+            fill=(0, 0, 0),
         )
-        image = np.asarray(image_pil)
+        return np.asarray(image_pil)
+
+    def _render_with_images(self, player_position):
+        """Image-based rendering (food images for pads, animal image for agent)."""
+        # Build base image: white background, gray walls
+        height = Y_BOUND * RENDER_SCALE
+        width = X_BOUND * RENDER_SCALE
+        image = np.zeros((height, width, 3), dtype=np.uint8) + 255
+
+        # Draw walls (gray)
+        for (x, y), char in np.ndenumerate(self.layout):
+            if char == '#':
+                px_min, px_max = x * RENDER_SCALE, (x + 1) * RENDER_SCALE
+                py_min, py_max = y * RENDER_SCALE, (y + 1) * RENDER_SCALE
+                image[py_min:py_max, px_min:px_max] = (192, 192, 192)
+
+        # Draw pads: group cells by pad char, get bbox, paste scaled image
+        for pad_char in self.pads:
+            cells = list(zip(*np.where(self.layout == pad_char)))
+            if not cells:
+                continue
+            xs, ys = [c[0] for c in cells], [c[1] for c in cells]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            pad_w = (x_max - x_min + 1) * RENDER_SCALE
+            pad_h = (y_max - y_min + 1) * RENDER_SCALE
+            px_min, py_min = x_min * RENDER_SCALE, y_min * RENDER_SCALE
+
+            pad_img = pinpad_assets.load_pad_image(pad_char, pad_w, pad_h)
+            pinpad_assets._composite_rgba_onto_rgb(image, pad_img, px_min, py_min)
+
+        # Draw agent (scaled up, centered on cell) - alpha composite so transparent areas show pads underneath
+        agent_idx = int(self.variation_space['agent']['visual'].value)
+        agent_size = int(RENDER_SCALE * pinpad_assets.AGENT_SIZE_FACTOR)
+        agent_img = pinpad_assets.load_agent_image(agent_idx, agent_size)
+        x, y = player_position
+        center_px = int(x * RENDER_SCALE)
+        center_py = int(y * RENDER_SCALE)
+        px = center_px - agent_size // 2
+        py = center_py - agent_size // 2
+        px_clip = max(0, min(px, width - agent_size))
+        py_clip = max(0, min(py, height - agent_size))
+        src_x = max(0, -px)
+        src_y = max(0, -py)
+        dst_w = min(agent_size - src_x, width - px_clip)
+        dst_h = min(agent_size - src_y, height - py_clip)
+        if dst_w > 0 and dst_h > 0:
+            agent_clip = agent_img[src_y : src_y + dst_h, src_x : src_x + dst_w]
+            pinpad_assets._composite_rgba_onto_rgb(image, agent_clip, px_clip, py_clip)
+
         return image
