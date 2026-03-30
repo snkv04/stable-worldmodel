@@ -36,7 +36,7 @@ class PreJEPA(torch.nn.Module):
         is_video=False,
     ):
         assert target not in info, f'{target} key already in info_dict'
-        emb_keys = emb_keys or self.extra_encoders.keys()
+        emb_keys = self.extra_encoders.keys() if emb_keys is None else emb_keys
         prefix = prefix or ''
 
         encode_fn = self._encode_video if is_video else self._encode_image
@@ -309,10 +309,9 @@ class PreJEPA(torch.nn.Module):
         info['embed'] = self.replace_action_in_embedding(
             info['embed'], action_sequence[:, :, :n_obs]
         )
-        # action_dim = init_info_dict["action_embed"].shape[-1]
-        info['action_embed'] = action_sequence[
-            :, :, :n_obs
-        ]  # info["embed"][:, :, :n_obs, 0, -action_dim:]
+
+        action_dim = init_info_dict['action_embed'].shape[-1]
+        info['action_embed'] = info['embed'][:, :, :n_obs, 0, -action_dim:]
 
         # number of step to predict
         act_pred = action_sequence[:, :, n_obs:]

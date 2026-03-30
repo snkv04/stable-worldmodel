@@ -8,17 +8,46 @@ from dm_control.suite import walker
 from dm_control.suite.wrappers import action_scale
 
 from stable_worldmodel import spaces as swm_space
+from stable_worldmodel.envs.dmcontrol.custom_tasks.walker import (
+    CustomPlanarWalker,
+)
 from stable_worldmodel.envs.dmcontrol.dmcontrol import DMControlWrapper
 
 
 _CONTROL_TIMESTEP = 0.025
 _DEFAULT_TIME_LIMIT = 25
 
-_WALK_SPEED = 1
+_TASKS = (
+    'stand',
+    'walk',
+    'run',
+    'walk-backward',
+    'arabesque',
+    'lie_down',
+    'legs_up',
+    'flip',
+)
+
+_TASK_MOVE_SPEEDS = {
+    'stand': 0,
+    'walk': 1,
+    'run': 8,
+    'walk-backward': 1,
+    'arabesque': 0,
+    'lie_down': 0,
+    'legs_up': 0,
+    'flip': 0,
+}
 
 
 class WalkerDMControlWrapper(DMControlWrapper):
-    def __init__(self, seed=None, environment_kwargs=None):
+    def __init__(self, task='walk', seed=None, environment_kwargs=None):
+        if task not in _TASKS:
+            raise ValueError(
+                f"Unknown task '{task}'. Must be one of {list(_TASKS)}"
+            )
+        self._task = task
+        self._move_speed = _TASK_MOVE_SPEEDS[task]
         xml, assets = walker.get_model_and_assets()
         xml = xml.replace(b'file="./common/', b'file="common/')
         suite_dir = os.path.dirname(walker.__file__)  # .../dm_control/suite
@@ -59,6 +88,31 @@ class WalkerDMControlWrapper(DMControlWrapper):
                         # TODO lock right knee joint (by default it is unlocked 1)
                         'right_knee_locked': swm_space.Discrete(
                             2, init_value=1
+                        ),
+                    }
+                ),
+                'gravity': swm_space.Dict(
+                    {
+                        'x': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'y': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'z': swm_space.Box(
+                            low=-20.0,
+                            high=0.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([-9.81], dtype=np.float64),
                         ),
                     }
                 ),
@@ -104,6 +158,45 @@ class WalkerDMControlWrapper(DMControlWrapper):
             }
         )
 
+    def apply_runtime_variations(self):
+        """Apply gravity variation directly on the compiled physics model."""
+        desired_gx = float(
+            np.asarray(self.variation_space['gravity']['x'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gy = float(
+            np.asarray(self.variation_space['gravity']['y'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gz = float(
+            np.asarray(self.variation_space['gravity']['z'].value).reshape(-1)[
+                0
+            ]
+        )
+        self.set_gravity([desired_gx, desired_gy, desired_gz])
+
+    @property
+    def info(self):
+        info = super().info
+        info['speed'] = float(self.env.physics.horizontal_velocity())
+        info['torso_height'] = float(self.env.physics.torso_height())
+        info['torso_upright'] = float(self.env.physics.torso_upright())
+        info['left_foot_height'] = float(
+            self.env.physics.named.data.xpos['left_foot', 'z']
+        )
+        info['right_foot_height'] = float(
+            self.env.physics.named.data.xpos['right_foot', 'z']
+        )
+        info['left_thigh_height'] = float(
+            self.env.physics.named.data.xpos['left_thigh', 'z']
+        )
+        info['right_thigh_height'] = float(
+            self.env.physics.named.data.xpos['right_thigh', 'z']
+        )
+        return info
+
     def compile_model(self, seed=None, environment_kwargs=None):
         """Compile the MJCF model into DMControl env."""
         assert self._mjcf_model is not None, 'No MJCF model to compile!'
@@ -115,7 +208,9 @@ class WalkerDMControlWrapper(DMControlWrapper):
         )
         xml_path = os.path.join(self._mjcf_tempdir.name, 'walker.xml')
         physics = walker.Physics.from_xml_path(xml_path)
-        task = walker.PlanarWalker(move_speed=_WALK_SPEED, random=seed)
+        task = CustomPlanarWalker(
+            goal=self._task, move_speed=self._move_speed, random=seed
+        )
         environment_kwargs = environment_kwargs or {}
         env = control.Environment(
             physics,

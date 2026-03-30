@@ -9,15 +9,33 @@ from dm_control.suite.wrappers import action_scale
 
 from stable_worldmodel import spaces as swm_spaces
 from stable_worldmodel.envs.dmcontrol.dmcontrol import DMControlWrapper
+from stable_worldmodel.envs.dmcontrol.custom_tasks.reacher import (
+    ReacherQPosMatchTask,
+)
 
 
 _DEFAULT_TIME_LIMIT = 20
 
+_BIG_TARGET = 0.05
 _SMALL_TARGET = 0.015
+
+_TASKS = ('easy', 'hard', 'qpos_match')
+
+_TASK_TARGET_SIZES = {
+    'easy': _BIG_TARGET,
+    'hard': _SMALL_TARGET,
+    'qpos_match': _SMALL_TARGET,
+}
 
 
 class ReacherDMControlWrapper(DMControlWrapper):
-    def __init__(self, seed=None, environment_kwargs=None):
+    def __init__(self, task='hard', seed=None, environment_kwargs=None):
+        if task not in _TASKS:
+            raise ValueError(
+                f"Unknown task '{task}'. Must be one of {list(_TASKS)}"
+            )
+        self._task_name = task
+        self._target_size = _TASK_TARGET_SIZES[task]
         xml, assets = reacher.get_model_and_assets()
         xml = xml.replace(b'file="./common/', b'file="common/')
         suite_dir = os.path.dirname(reacher.__file__)  # .../dm_control/suite
@@ -106,6 +124,17 @@ class ReacherDMControlWrapper(DMControlWrapper):
             }
         )
 
+    @property
+    def info(self):
+        info = super().info
+        info['target_pos'] = self.env.physics.named.data.geom_xpos[
+            'target', :2
+        ].copy()
+        info['finger_pos'] = self.env.physics.named.data.geom_xpos[
+            'finger', :2
+        ].copy()
+        return info
+
     def compile_model(self, seed=None, environment_kwargs=None):
         """Compile the MJCF model into DMControl env."""
         assert self._mjcf_model is not None, 'No MJCF model to compile!'
@@ -117,7 +146,12 @@ class ReacherDMControlWrapper(DMControlWrapper):
         )
         xml_path = os.path.join(self._mjcf_tempdir.name, 'reacher.xml')
         physics = reacher.Physics.from_xml_path(xml_path)
-        task = reacher.Reacher(target_size=_SMALL_TARGET, random=seed)
+        if self._task_name == 'qpos_match':
+            task = ReacherQPosMatchTask(
+                target_size=self._target_size, random=seed
+            )
+        else:
+            task = reacher.Reacher(target_size=self._target_size, random=seed)
         environment_kwargs = environment_kwargs or {}
         env = control.Environment(
             physics, task, time_limit=_DEFAULT_TIME_LIMIT, **environment_kwargs
@@ -126,6 +160,36 @@ class ReacherDMControlWrapper(DMControlWrapper):
         self.env = env
         # Mark the environment as clean.
         self._dirty = False
+
+    def set_target_qpos(self, target_qpos):
+        """Set the target qpos for the qpos_match task.
+
+        Args:
+            target_qpos: Array of joint positions to match (shape matching
+                physics.data.qpos).
+        """
+        assert self._task_name == 'qpos_match', (
+            "set_target_qpos() is only valid for the 'qpos_match' task."
+        )
+        self.env.task.target_qpos = np.asarray(target_qpos, dtype=np.float64)
+
+    def reset(self, seed=None, options=None):
+        obs, info = super().reset(seed=seed, options=options)
+        if self._task_name == 'qpos_match' and options is not None:
+            target_qpos = options.get('target_qpos')
+            if target_qpos is not None:
+                self.env.task.target_qpos = np.asarray(
+                    target_qpos, dtype=np.float64
+                )
+        return obs, info
+
+    def _is_terminated(self, step) -> bool:
+        if self._task_name != 'qpos_match':
+            return False
+        return (
+            step.last()
+            and self.env.task.get_termination(self.env.physics) is not None
+        )
 
     def modify_mjcf_model(self, mjcf_model):
         """Apply visual variations to the MuJoCo model based on variation space.
@@ -247,11 +311,12 @@ class ReacherDMControlWrapper(DMControlWrapper):
         if shape_id == 0:
             desired_type = 'box'
             desired_size = np.array(
-                [_SMALL_TARGET, _SMALL_TARGET, _SMALL_TARGET], dtype=np.float32
+                [self._target_size, self._target_size, self._target_size],
+                dtype=np.float32,
             )
         else:
             desired_type = 'sphere'
-            desired_size = np.array([_SMALL_TARGET], dtype=np.float32)
+            desired_size = np.array([self._target_size], dtype=np.float32)
 
         if target_geom.type != desired_type:
             target_changed = True

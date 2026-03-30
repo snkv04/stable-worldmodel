@@ -1,6 +1,6 @@
 [project]
 name = "stable-worldmodel"
-version = "0.0.3"
+version = "0.0.6"
 description = "World Model Research Made Simple"
 readme="README.md"
 license="MIT"
@@ -25,7 +25,12 @@ dependencies = [
   "hdf5plugin",
   "tqdm",
   "gdown",
+  "typer",
+  "rich",
 ]
+
+[project.scripts]
+swm = "stable_worldmodel.cli:app"
 
 [project.optional-dependencies]
 train = [
@@ -44,6 +49,7 @@ env = [
     "minigrid",
     "gymnasium[all]",
     "opencv-python",
+    "stable_baselines3",
 ]
 
 [dependency-groups]
@@ -67,6 +73,11 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = "."
+source-exclude = [
+    "**/.mypy_cache/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+]
 
 [tool.ruff]
 line-length = 79

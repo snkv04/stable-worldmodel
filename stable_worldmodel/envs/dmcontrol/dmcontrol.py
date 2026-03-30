@@ -37,6 +37,7 @@ class DMControlWrapper(gym.Env):
         self._cumulative_reward = 0
         self.action_repeat = 2
         self.variation_space = None
+        self.env_name = self.__class__.__name__.replace('DMControlWrapper', '')
 
     @property
     def unwrapped(self):
@@ -50,6 +51,7 @@ class DMControlWrapper(gym.Env):
     @property
     def info(self):
         return {
+            'env_name': self.env_name,
             'success': float('nan'),
             'qpos': np.copy(self.env.physics.data.qpos),
             'qvel': np.copy(self.env.physics.data.qvel),
@@ -74,6 +76,11 @@ class DMControlWrapper(gym.Env):
             self.compile_model(seed=seed, environment_kwargs={})
 
         self._cumulative_reward = 0
+        self.apply_runtime_variations()
+
+        if seed is not None:
+            self.env.task._random = np.random.RandomState(seed)
+
         time_step = self.env.reset()
         obs = time_step.observation
         if 'state' in options and options['state'] is not None:
@@ -88,20 +95,53 @@ class DMControlWrapper(gym.Env):
             obs = self.env.task.get_observation(self.env.physics)
         return self._obs_to_array(obs), self.info
 
+    def _is_terminated(self, step) -> bool:
+        """Return True if the current step should end the episode as a success.
+
+        Override in subclasses to implement custom termination conditions.
+        The base implementation always returns False (no early termination).
+
+        Args:
+            step: The dm_control TimeStep returned by the environment.
+        """
+        return False
+
     def step(self, action):
         reward = 0
         action = action.astype(self.action_spec_dtype)
+        terminated = False
         for _ in range(self.action_repeat):
             step = self.env.step(action)
-            reward += step.reward
+            reward += step.reward or 0
+            if self._is_terminated(step):
+                terminated = True
+                break
         self._cumulative_reward += reward
 
         return (
             self._obs_to_array(step.observation),
             reward,
-            False,
+            terminated,
             False,
             self.info,
+        )
+
+    def apply_runtime_variations(self):
+        """Apply runtime variations that don't require MJCF recompilation.
+
+        Subclasses should override this to apply physics-level changes
+        (e.g. gravity) directly on the compiled model.
+        """
+        pass
+
+    def set_gravity(self, gravity):
+        """Set the gravity vector of the environment.
+
+        Args:
+            gravity: array-like of shape (3,), e.g. [0, 0, -9.81].
+        """
+        self.env.physics.model.opt.gravity[:] = np.asarray(
+            gravity, dtype=np.float64
         )
 
     def set_state(self, qpos, qvel):

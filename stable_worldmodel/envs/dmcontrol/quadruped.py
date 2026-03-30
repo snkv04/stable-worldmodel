@@ -15,12 +15,25 @@ _DEFAULT_TIME_LIMIT = 20
 _CONTROL_TIMESTEP = 0.02
 
 _WALK_SPEED = 0.5
+_RUN_SPEED = 5
+
+_TASKS = ('walk', 'run')
+
+_TASK_SPEEDS = {
+    'walk': _WALK_SPEED,
+    'run': _RUN_SPEED,
+}
 
 
 class QuadrupedDMControlWrapper(DMControlWrapper):
-    def __init__(self, seed=None, environment_kwargs=None):
+    def __init__(self, task='walk', seed=None, environment_kwargs=None):
+        if task not in _TASKS:
+            raise ValueError(
+                f"Unknown task '{task}'. Must be one of {list(_TASKS)}"
+            )
+        self._desired_speed = _TASK_SPEEDS[task]
         xml = quadruped.make_model(
-            floor_size=_DEFAULT_TIME_LIMIT * _WALK_SPEED
+            floor_size=_DEFAULT_TIME_LIMIT * self._desired_speed
         )
         assets = quadruped.common.ASSETS
         xml = xml.replace(b'file="./common/', b'file="common/')
@@ -65,6 +78,31 @@ class QuadrupedDMControlWrapper(DMControlWrapper):
                         ),
                     }
                 ),
+                'gravity': swm_space.Dict(
+                    {
+                        'x': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'y': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'z': swm_space.Box(
+                            low=-20.0,
+                            high=0.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([-9.81], dtype=np.float64),
+                        ),
+                    }
+                ),
                 'floor': swm_space.Dict(
                     {
                         'friction': swm_space.Box(
@@ -100,6 +138,31 @@ class QuadrupedDMControlWrapper(DMControlWrapper):
             }
         )
 
+    def apply_runtime_variations(self):
+        """Apply gravity variation directly on the compiled physics model."""
+        desired_gx = float(
+            np.asarray(self.variation_space['gravity']['x'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gy = float(
+            np.asarray(self.variation_space['gravity']['y'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gz = float(
+            np.asarray(self.variation_space['gravity']['z'].value).reshape(-1)[
+                0
+            ]
+        )
+        self.set_gravity([desired_gx, desired_gy, desired_gz])
+
+    @property
+    def info(self):
+        info = super().info
+        info['torso_velocity'] = self.env.physics.torso_velocity().copy()
+        return info
+
     def compile_model(self, seed=None, environment_kwargs=None):
         """Compile the MJCF model into DMControl env."""
         assert self._mjcf_model is not None, 'No MJCF model to compile!'
@@ -111,7 +174,7 @@ class QuadrupedDMControlWrapper(DMControlWrapper):
         )
         xml_path = os.path.join(self._mjcf_tempdir.name, 'quadruped.xml')
         physics = quadruped.Physics.from_xml_path(xml_path)
-        task = quadruped.Move(random=seed, desired_speed=_WALK_SPEED)
+        task = quadruped.Move(random=seed, desired_speed=self._desired_speed)
         environment_kwargs = environment_kwargs or {}
         env = control.Environment(
             physics,

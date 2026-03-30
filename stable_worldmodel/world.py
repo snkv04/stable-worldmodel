@@ -222,6 +222,7 @@ class World:
         fps: int = 30,
         viewname: str | list[str] = 'pixels',
         seed: int | None = None,
+        extension: str = 'mp4',
         options: dict | None = None,
     ) -> None:
         """Record rollout videos for each environment under the current policy.
@@ -232,14 +233,20 @@ class World:
             fps: Frames per second for the output video.
             viewname: Key(s) in `infos` containing image data to render.
             seed: Random seed for reset.
+            extension: Video file format ('mp4' or 'gif').
             options: Options for reset.
         """
+
+        assert extension in ['mp4', 'gif'], (
+            'Unsupported video format. Use "mp4" or "gif".'
+        )
+
         import imageio
 
         viewname = [viewname] if isinstance(viewname, str) else viewname
         out = [
             imageio.get_writer(
-                Path(video_path) / f'env_{i}.mp4',
+                Path(video_path) / f'env_{i}.{extension}',
                 fps=fps,
                 codec='libx264',
             )
@@ -415,6 +422,8 @@ class World:
             if key in ['ep_len', 'ep_idx', 'policy']:
                 continue
 
+            key = key.replace('/', '_')  # sanitize keys for h5
+
             # determine array shape and dtype from sample data
             sample_data = np.array(data_list[0])
             shape = (0,) + sample_data.shape
@@ -431,11 +440,17 @@ class World:
                 chunks = (1000,) + sample_data.shape
                 compression = None
 
+            dtype = sample_data.dtype
+            if np.issubdtype(dtype, np.str_) or np.issubdtype(
+                dtype, np.bytes_
+            ):
+                dtype = h5py.string_dtype()
+
             f.create_dataset(
                 key,
                 shape=shape,
                 maxshape=maxshape,
-                dtype=sample_data.dtype,
+                dtype=dtype,
                 chunks=chunks,
                 compression=compression,
             )
@@ -529,11 +544,12 @@ class World:
         ep_len = len(ep_data['step_idx'])
 
         # append data to each dataset
-        for key in f.keys():
-            if key in ['ep_offset', 'ep_len']:
+        for key in ep_data:
+            h5_key = key.replace('/', '_')  # sanitize keys for h5
+            if h5_key in ['ep_len', 'policy']:
                 continue
 
-            ds = f[key]
+            ds = f[h5_key]
             curr_size = ds.shape[0]
             ds.resize(curr_size + ep_len, axis=0)
             ds[curr_size:] = np.array(ep_data[key])
@@ -772,7 +788,9 @@ class World:
 
         ep_idx_arr = np.array(episodes_idx)
         start_steps_arr = np.array(start_steps)
-        end_steps = start_steps_arr + goal_offset_steps
+        # We add +1 so that the last loaded frame will align with the last frame we encounter
+        # when stepping through the rollout.
+        end_steps = start_steps_arr + goal_offset_steps + 1
 
         if not (len(ep_idx_arr) == len(start_steps_arr)):
             raise ValueError(
@@ -910,7 +928,7 @@ class World:
         }
 
         # expend all data to the right shape (x, y, (original_shape))
-        shape_prefix = next(iter(self.infos.values())).shape[:2]
+        shape_prefix = self.infos['pixels'].shape[:2]
 
         # TODO get the data from the previous step in the dataset for history
         init_step = {

@@ -22,7 +22,10 @@ where $z_{t+1}$ represents the frozen DINOv2 features of the next observation.
 
 | Environment | Success Rate | Checkpoint |
 |-------------|--------------|------------|
-| [Push-T](envs/pusht.md) | ~86% | NA |
+| TwoRoom | 100% | NA |
+| Push-T | 74% | NA |
+| Reacher | 79% | NA |
+| OGB Cube | 86% | NA |
 
 ## Planning with Latent Dynamics Model
 
@@ -45,7 +48,32 @@ where $\alpha$, $\beta$, $\delta$, and $\omega$ are hyperparameters controlling 
 
 | Environment | Success Rate | Checkpoint |
 |-------------|--------------|------------|
-| ? | ? | NA |
+| TwoRoom | 97% | NA |
+| Push-T | 78% | NA |
+| Reacher | 78% | NA |
+| OGB Cube | 65% | NA |
+
+
+## LeWorldModel
+
+Similarly to PLDM, [LeWM](https://le-wm.github.io) learns the encoder and predictor in an end-to-end fashion using SIGReg to avoid representational collapse. SIGReg is a regularization enforcing a Gaussian distribution of the latent space; we refer to [LeJEPA](https://arxiv.org/abs/2511.08544) for details.
+
+### Training Objective
+
+The complete LeWM training objective combines a classical prediction loss $\mathcal{L}_{\text{pred}}$ with a regularization term:
+
+$$\mathcal{L}_{\text{LeWM}} = \mathcal{L}_{\text{pred}} + \lambda\,\mathcal{L}_{\text{SIGReg}}$$
+
+where $\lambda$ is the only hyperparameter.
+
+### Benchmark
+
+| Environment | Success Rate | Checkpoint |
+|-------------|--------------|------------|
+| TwoRoom | 87% | NA |
+| Push-T | 96% | NA |
+| Reacher | 86% | NA |
+| OGB Cube | 74% | NA |
 
 
 ## Goal-Conditioned Behavioural Cloning
@@ -65,22 +93,43 @@ where $s_t$ is the observation embedding, $g$ is the goal embedding, and $a_t$ i
 
 | Environment | Success Rate | Checkpoint |
 |-------------|--------------|------------|
-| Push-T | ~52% | NA |
+| TwoRoom | 100% | NA |
+| Push-T | 75% | NA |
+| Reacher | - | NA |
+| OGB Cube | 84% | NA |
 
 
 ## Implicit Q-Learning
 
-Implicit Q-Learning (IQL) is an offline reinforcement learning method introduced by [Kostrikov et al., 2021](https://arxiv.org/pdf/2110.06169). IQL avoids querying out-of-distribution actions by learning a state value function $V(s, g)$ via expectile regression, then extracting a policy through advantage-weighted regression (AWR). In our implementation, observations and goals are encoded into DINOv2 patch embeddings and training proceeds in two phases: value learning followed by policy extraction.
+Implicit Q-Learning (IQL) is an offline reinforcement learning method introduced by [Kostrikov et al., 2021](https://arxiv.org/pdf/2110.06169). IQL avoids querying out-of-distribution actions by learning a state value function $V(s)$ via expectile regression. Once the critic is learned, a policy is extracted through advantage-weighted regression (AWR). In our implementation, we consider the goal-conditioned version of this algorithm and its variants [IVL](https://arxiv.org/pdf/2410.20092) and [HILP](https://arxiv.org/pdf/2402.15567). The observations and goals are encoded into DINOv2 patch embeddings and training proceeds in two phases: value/critic learning followed by policy extraction.
 
 ### Training Objective
 
-**Value function.** The value network $V_\theta(s_t, g)$ is trained with expectile regression against bootstrapped targets from a target network $V_{\bar{\theta}}$:
+Training proceeds in two phases: (1) joint critic/value learning, (2) policy extraction via AWR. The critic training differs across variants:
+
+**IQL.** IQL learns both a Q-function $Q_\psi(s_t, a_t, g)$ and a value function $V_\theta(s_t, g)$. The Q-network is trained with Bellman regression, bootstrapping from the target value network $V_{\bar{\theta}}$:
+
+$$ \mathcal{L}_{Q} = \mathbb{E}_{(s_t, a_t, s_{t+1}, g) \sim \mathcal{D}} \left[ \left( Q_\psi(s_t, a_t, g) - \left( r(s_t, g) + \gamma \, m_t \, V_{\bar{\theta}}(s_{t+1}, g) \right) \right)^2 \right] $$
+
+where $m_t = 0$ if $s_t = g$ (terminal) and $m_t = 1$ otherwise. The value network is trained with expectile regression against targets from the target Q-network $Q_{\bar{\psi}}$:
+
+$$ \mathcal{L}_{V} = \mathbb{E}_{(s_t, a_t, g) \sim \mathcal{D}} \left[ L_\tau^2 \!\left( Q_{\bar{\psi}}(s_t, a_t, g) - V_\theta(s_t, g) \right) \right] $$
+
+where $L_\tau^2(u) = |\tau - \mathbb{1}(u < 0)| \, u^2$ is the asymmetric expectile loss. The total critic-phase loss is $\mathcal{L}_{\text{critic}} = \mathcal{L}_{Q} + \mathcal{L}_{V}$.
+
+**IVL.** [IVL](https://arxiv.org/pdf/2410.20092) removes the Q-function entirely and trains the value network $V_\theta(s_t, g)$ with expectile regression directly against bootstrapped targets from a target network $V_{\bar{\theta}}$:
 
 $$ \mathcal{L}_{V} = \mathbb{E}_{(s_t, s_{t+1}, g) \sim \mathcal{D}} \left[ L_\tau^2 \!\left( r(s_t, g) + \gamma \, V_{\bar{\theta}}(s_{t+1}, g) - V_\theta(s_t, g) \right) \right] $$
 
-where $L_\tau^2(u) = |\tau - \mathbb{1}(u < 0)| \, u^2$ is the asymmetric expectile loss, $\gamma = 0.99$ is the discount factor, and $r(s_t, g) = 0$ if $s_t = g$, $-1$ otherwise.
+with the same expectile loss $L_\tau^2$, discount $\gamma$, and reward $r$ as defined above.
 
-**Policy extraction.** The actor $\pi_\theta(s_t, g)$ is trained via advantage-weighted regression:
+**HILP.** [HILP](https://arxiv.org/pdf/2402.15567) uses the same loss structure as IVL but replaces the value network with a metric-based parameterization. A learned encoder $\phi$ maps observations and goals into a low-dimensional embedding space, and the value is computed as the negative L2 distance:
+
+$$ V(s_t, g) = -\| \phi(s_t) - \phi(g) \|_2 $$
+
+The encoder is trained end-to-end with the same expectile regression loss as IVL, but the value function has no free parameters beyond $\phi$.
+
+**Policy extraction.** For every variant (IQL, IVL, HILP), the actor $\pi_\theta(s_t, g)$ is trained via advantage-weighted regression (AWR):
 
 $$ \mathcal{L}_{\pi} = \mathbb{E}_{(s_t, a_t, g) \sim \mathcal{D}} \left[ \exp\!\left(\beta \cdot A(s_t, a_t, g)\right) \| \pi_\theta(s_t, g) - a_t \|_2^2 \right] $$
 
@@ -88,7 +137,12 @@ where $A(s_t, a_t, g) = r(s_t, g) + \gamma \, V(s_{t+1}, g) - V(s_t, g)$ is the 
 
 ### Benchmark
 
-| Environment | Success Rate | Checkpoint |
-|-------------|--------------|------------|
-| Push-T | ? | NA |
+| Environment | Variant | Success Rate | Checkpoint |
+|-------------|---------|--------------|------------|
+| TwoRoom | IQL | 100% | NA |
+| TwoRoom | IVL | 100% | NA |
+| Push-T | IQL | 20% | NA |
+| Push-T | IVL | 33% | NA |
+| OGB Cube | IQL | 64% | NA |
+| OGB Cube | IVL | 56% | NA |
 

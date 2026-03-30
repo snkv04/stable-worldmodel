@@ -36,6 +36,11 @@ See the [World API](api/world.md) for all available parameters and methods.
                                                                                                                             
         env = gym.make('swm/PushT-v1', render_mode='rgb_array')   
 
+Use the CLI to list all available environments:
+
+```bash
+swm envs
+```
 
 ### Factors of Variation (FoV)
 
@@ -63,6 +68,12 @@ block:
     ...
 background:
     color: Box(0, 255, (3,), uint8)
+```
+
+Use the CLI to inspect the factors of variation for a specific environment:
+
+```bash
+swm fovs swm/PushT-v1
 ```
 
 #### Controlling Variations at Reset
@@ -181,7 +192,7 @@ Stable World-Model provides utilities for recording and loading episode datasets
 
 ### Recording a Dataset
 
-Use `world.record_dataset()` to collect episodes and save them in HDF5 format. The dataset is saved to `$STABLEWM_HOME` (defaults to `~/.stable-wm/`). This is useful for collecting expert demonstrations, random exploration data, or rollouts from a trained policy.
+Use `world.record_dataset()` to collect episodes and save them in HDF5 format. The dataset is saved to `$STABLEWM_HOME` (defaults to `~/.stable_worldmodel/`). This is useful for collecting expert demonstrations, random exploration data, or rollouts from a trained policy.
 
 ```python
 world = swm.World('swm/PushT-v1', num_envs=8, image_shape=(224, 224))
@@ -220,6 +231,13 @@ print(sample['action'].shape)   # (4, action_dim)
 ```
 
 The dataset is compatible with PyTorch `DataLoader` for batched training.
+
+Use the CLI to list all available datasets, or inspect a specific one:
+
+```bash
+swm datasets
+swm inspect pusht_expert_train
+```
 
 ### Recording Videos
 

@@ -11,6 +11,19 @@ from typing import Any
 import numpy as np
 from loguru import logger as logging
 
+DEFAULT_CACHE_DIR = os.path.expanduser('~/.stable_worldmodel')
+HF_BASE_URL = 'https://huggingface.co'
+
+
+def exists(val: Any) -> bool:
+    """Check if a value is not None."""
+    return val is not None
+
+
+def default(val: Any, d: Any) -> Any:
+    """Return val if it exists, otherwise return d."""
+    return val if exists(val) else d
+
 
 def pretraining(
     script_path: str,
@@ -95,7 +108,6 @@ def record_video_from_dataset(
     max_steps: int = 500,
     fps: int = 30,
     viewname: str | list[str] = 'pixels',
-    suffix: str = '.mp4',
 ) -> None:
     """Replay stored dataset episodes and export them as MP4 videos.
 
@@ -106,7 +118,6 @@ def record_video_from_dataset(
         max_steps: Maximum frames per video.
         fps: Frames per second for the output video.
         viewname: Key(s) in the dataset to use as video frames.
-        suffix: Suffix for the output video file.
     """
     import imageio
 
@@ -120,18 +131,22 @@ def record_video_from_dataset(
     )
 
     for ep_idx in episode_idx:
-        file_path = Path(video_path, f'episode_{ep_idx}{suffix}')
+        file_path = Path(video_path, f'episode_{ep_idx}.mp4')
         steps = dataset.load_episode(ep_idx)
         frames = np.concatenate([steps[v].numpy() for v in viewname], axis=2)
         frames = frames[:max_steps]
-
-        kwargs = {'fps': fps}
-        if suffix.lower() == '.gif':
-            kwargs['loop'] = 0
-        imageio.mimsave(
-            file_path.with_suffix(suffix),
-            frames.transpose(0, 2, 3, 1),
-            **kwargs,
-        )
+        imageio.mimsave(file_path, frames.transpose(0, 2, 3, 1), fps=fps)
 
     print(f'Video saved to {video_path}')
+
+
+__all__ = [
+    'exists',
+    'default',
+    'pretraining',
+    'flatten_dict',
+    'get_in',
+    'record_video_from_dataset',
+    'HF_BASE_URL',
+    'DEFAULT_CACHE_DIR',
+]

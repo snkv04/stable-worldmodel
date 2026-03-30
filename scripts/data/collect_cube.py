@@ -1,95 +1,46 @@
 import os
 
-
-# os.environ["PYOPENGL_PLATFORM"] = "egl"
-os.environ["MUJOCO_GL"] = "egl"
-
-
-import concurrent.futures
-
+os.environ['MUJOCO_GL'] = 'egl'
 import hydra
 import numpy as np
 from loguru import logger as logging
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 import stable_worldmodel as swm
-from stable_worldmodel.envs.ogbench_manip import ExpertPolicy
+from stable_worldmodel.envs.ogbench import ExpertPolicy
 
 
-def collect_shard(shard_id, seed, cfg):
-    """
-    Worker function to collect a single shard.
-    Instantiates its own World and Policy to avoid pickling issues.
-    """
-    try:
-        world = swm.World(
-            "swm/OGBCube-v0",
-            **cfg.world,
-            env_type="single",
-            ob_type="pixels",
-            multiview=False,
-            width=224,
-            height=224,
-            visualize_info=False,
-            terminate_at_goal=False,
-            mode="data_collection",
-        )
-
-        world.set_policy(ExpertPolicy(policy_type="plan_oracle"))
-
-        options = cfg.get("options")
-        traj_per_shard = cfg.num_traj // cfg.num_shards
-
-        logging.info(f"Process {shard_id}: Started collecting {traj_per_shard} trajectories...")
-
-        world.record_dataset(
-            f"ogb_cube_oracle_parallel/shard_{shard_id}",
-            episodes=traj_per_shard,
-            seed=seed,
-            cache_dir=cfg.cache_dir,
-            mode=cfg.ds_type,
-            options=options,
-        )
-
-        world.close()
-        return f"Shard {shard_id} success"
-
-    except Exception as e:
-        logging.error(f"Shard {shard_id} failed: {e}")
-        raise e
-
-
-@hydra.main(version_base=None, config_path="./", config_name="config")
+@hydra.main(version_base=None, config_path='./config', config_name='ogb')
 def run(cfg: DictConfig):
     """Run parallel data collection script"""
 
-    # Configuration for parallelism
-    max_workers = cfg.get("num_workers", 4)
+    world = swm.World(
+        'swm/OGBCube-v0',
+        **cfg.world,
+        env_type='single',
+        multiview=True,
+        width=224,
+        height=224,
+        visualize_info=False,
+        terminate_at_goal=False,
+        mode='data_collection',
+    )
 
-    logging.info(f"🚀 Starting data collection with {max_workers} parallel workers")
-
-    # Generate distinct seeds for each shard upfront
+    options = cfg.get('options')
+    options = OmegaConf.to_object(options) if options is not None else None
     rng = np.random.default_rng(cfg.seed)
-    seeds = [rng.integers(0, 1_000_000).item() for _ in range(cfg.num_shards)]
+    world.set_policy(ExpertPolicy())
 
-    # Use ProcessPoolExecutor to bypass the GIL
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
+    world.record_dataset(
+        'ogbench/cube_single_multiview_expert',
+        episodes=cfg.num_traj,
+        seed=rng.integers(0, 1_000_000).item(),
+        cache_dir=cfg.cache_dir,
+        options=options,
+    )
 
-        for i in range(cfg.num_shards):
-            # Submit tasks to the pool
-            futures.append(executor.submit(collect_shard, i, seeds[i], cfg))
-
-        # Monitor progress
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result()
-                logging.success(f"✅ {result}")
-            except Exception as e:
-                logging.error(f"❌ Worker failed with error: {e}")
-
-    logging.success("🎉🎉🎉 Completed data collection for all shards 🎉🎉🎉")
+    logging.success('🎉🎉🎉 Completed data collection for ogbench cube 🎉🎉🎉')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run()

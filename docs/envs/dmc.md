@@ -8,13 +8,16 @@ external_links:
 
 ## Description
 
-A collection of continuous control environments built on the [DeepMind Control Suite](https://github.com/google-deepmind/dm_control). These environments cover a range of classic locomotion and manipulation tasks in the [MuJoCo](https://mujoco.org/) physics engine.
+A collection of continuous control environments built on the [DeepMind Control Suite](https://github.com/google-deepmind/dm_control). These environments cover a range of classic locomotion and manipulation tasks in the [MuJoCo](https://mujoco.org/) physics engine. Some environments support multiple tasks via the `task` constructor argument. In general, the task only affects how the reward is computed.
 
 ```python
 import stable_worldmodel as swm
 
-# Example: Cheetah environment
+# Default task
 world = swm.World('swm/CheetahDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/CheetahDMControl-v0', num_envs=4, task='run-backward')
 ```
 
 ### Available Environments
@@ -40,10 +43,19 @@ world = swm.World('swm/CheetahDMControl-v0', num_envs=4)
 
 A 21-DoF humanoid body that must learn to walk forward at a target speed. The task uses feature-based observations (joint angles, head height, extremities, torso orientation, center-of-mass velocity).
 
-**Task**: Walk forward at a speed of 1 m/s.
+**Default task**: Walk forward at a speed of 1 m/s.
+
+| Task | Description |
+|------|-------------|
+| `stand` | Stand upright without moving |
+| `walk` (default) | Walk forward at 1 m/s |
+| `run` | Run forward at 10 m/s |
 
 ```python
 world = swm.World('swm/HumanoidDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/HumanoidDMControl-v0', num_envs=4, task='run')
 ```
 
 ### Environment Specs
@@ -72,14 +84,31 @@ world = swm.World('swm/HumanoidDMControl-v0', num_envs=4)
 
 ## Cheetah
 
-![cheetah](../assets/cheetah_run.gif)
+![cheetah](../assets/cheetah.gif)
 
 A planar biped (half-cheetah) that must learn to run forward as fast as possible. The task uses feature-based observations (joint angles and velocities).
 
-**Task**: Run forward (maximize forward velocity).
+**Default task**: Run forward.
+
+| Task | Description |
+|------|-------------|
+| `run` (default) | Run forward at 10 m/s |
+| `run-backward` | Run backward at 10 m/s |
+| `stand-front` | Stand on front foot |
+| `stand-back` | Stand on back foot |
+| `jump` | Jump (both feet off ground) |
+| `run-front` | Run forward while lifting back foot |
+| `run-back` | Run forward while lifting front foot |
+| `lie-down` | Lie down flat |
+| `legs-up` | Lie on back with legs up |
+| `flip` | Flip forward |
+| `flip-backward` | Flip backward |
 
 ```python
 world = swm.World('swm/CheetahDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/CheetahDMControl-v0', num_envs=4, task='run-backward')
 ```
 
 ### Environment Specs
@@ -104,18 +133,31 @@ world = swm.World('swm/CheetahDMControl-v0', num_envs=4)
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![cheetah_var](../assets/cheetah_var.gif)
+
 ---
 
 ## Hopper
 
-![hopper](../assets/hooper_backward.gif)
+![hopper](../assets/hopper.gif)
 
 A planar one-legged hopper that must learn to hop forward. The task uses feature-based observations (joint angles, velocities, touch sensor).
 
-**Task**: Hop forward (maximize forward velocity).
+**Default task**: Hop forward at 2 m/s.
+
+| Task | Description |
+|------|-------------|
+| `stand` | Balance upright without moving |
+| `hop` (default) | Hop forward at 2 m/s|
+| `hop-backward` | Hop backward at 1 m/s|
+| `flip` | Flip forward |
+| `flip-backward` | Flip backward |
 
 ```python
 world = swm.World('swm/HopperDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/HopperDMControl-v0', num_envs=4, task='hop-backward')
 ```
 
 ### Environment Specs
@@ -140,6 +182,8 @@ world = swm.World('swm/HopperDMControl-v0', num_envs=4)
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![hopper_var](../assets/hopper_var.gif)
+
 ---
 
 ## Reacher
@@ -148,10 +192,19 @@ world = swm.World('swm/HopperDMControl-v0', num_envs=4)
 
 A planar two-link arm that must reach a small target. The task uses feature-based observations (joint angles, velocities, finger-to-target distance).
 
-**Task**: Move the fingertip to a randomly placed target (size 0.015).
+**Default task**: Move the fingertip to a randomly placed target (size 0.015).
+
+| Task | Description |
+|------|-------------|
+| `easy` | Reach a large target (radius 0.05) |
+| `hard` (default) | Reach a small target (radius 0.015) |
+| `qpos_match` | Match a target joint configuration |
 
 ```python
 world = swm.World('swm/ReacherDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/ReacherDMControl-v0', num_envs=4, task='easy')
 ```
 
 ### Environment Specs
@@ -178,16 +231,34 @@ world = swm.World('swm/ReacherDMControl-v0', num_envs=4)
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![reacher_var](../assets/reacher_var.gif)
+
 ---
 
 ## Walker
 
+![walker](../assets/walker.gif)
+
 A planar bipedal walker that must learn to walk forward at a target speed. The task uses feature-based observations (joint angles, velocities, body height, orientation).
 
-**Task**: Walk forward at a speed of 1 m/s.
+**Default task**: Walk forward at a speed of 1 m/s.
+
+| Task | Description |
+|------|-------------|
+| `stand` | Stand upright without moving |
+| `walk` (default) | Walk forward at 1 m/s |
+| `run` | Run forward at 8 m/s |
+| `walk-backward` | Walk backward at 1 m/s |
+| `arabesque` | Stand on one foot in arabesque pose |
+| `lie_down` | Lie down flat |
+| `legs_up` | Lie on back with legs up |
+| `flip` | Flip upside down |
 
 ```python
 world = swm.World('swm/WalkerDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/WalkerDMControl-v0', num_envs=4, task='run')
 ```
 
 ### Environment Specs
@@ -213,16 +284,28 @@ world = swm.World('swm/WalkerDMControl-v0', num_envs=4)
 | `floor.rotation_y` | Box(-10, 10, shape=(1,)) | Floor rotation around Y axis (degrees) |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![walker_var](../assets/walker_var.gif)
+
 ---
 
 ## Quadruped
 
+![quadruped](../assets/quadruped.gif)
+
 A four-legged quadruped robot that must learn to walk forward. The task uses feature-based observations (joint angles, velocities, torso orientation, end effector positions).
 
-**Task**: Walk forward at a speed of 0.5 m/s.
+**Default task**: Walk forward at a speed of 0.5 m/s.
+
+| Task | Description |
+|------|-------------|
+| `walk` (default) | Walk forward at 0.5 m/s |
+| `run` | Run forward at 5 m/s |
 
 ```python
 world = swm.World('swm/QuadrupedDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/QuadrupedDMControl-v0', num_envs=4, task='run')
 ```
 
 ### Environment Specs
@@ -246,6 +329,8 @@ world = swm.World('swm/QuadrupedDMControl-v0', num_envs=4)
 | `floor.friction` | Box(0, 1, shape=(1,)) | Floor friction coefficient |
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
+
+![quadruped_var](../assets/quadruped_var.gif)
 
 ---
 
@@ -288,7 +373,7 @@ world = swm.World('swm/AcrobotDMControl-v0', num_envs=4)
 
 ## Pendulum
 
-![pendulum](../assets/swingup.gif)
+![pendulum](../assets/pendulum.gif)
 
 A single-link pendulum that must swing up and balance. The task uses feature-based observations (angle, angular velocity).
 
@@ -318,6 +403,8 @@ world = swm.World('swm/PendulumDMControl-v0', num_envs=4)
 | `agent.mass_shape` | Discrete(2) | Tip mass shape (0: box, 1: sphere) |
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
+
+![pendulum_var](../assets/pendulum_var.gif)
 
 ---
 
@@ -354,11 +441,13 @@ world = swm.World('swm/CartpoleDMControl-v0', num_envs=4)
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![cartpole_var](../assets/cartpole_var.gif)
+
 ---
 
 ## Ball in Cup
 
-![cup](../assets/cup_catch.gif)
+![ballincup](../assets/ballincup.gif)
 
 A planar ball-in-cup system where a cup must catch and hold a ball attached by a string. The task uses feature-based observations (cup position, ball position, velocities).
 
@@ -393,16 +482,31 @@ world = swm.World('swm/BallInCupDMControl-v0', num_envs=4)
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
 
+![ballincup_var](../assets/ballincup_var.gif)
+
 ---
 
 ## Finger
 
+![finger](../assets/finger.gif)
+
 A planar finger that must turn a spinner to reach a target angle. The task uses feature-based observations (finger joint angles, spinner angle, target position).
 
-**Task**: Turn the spinner so that a target on it reaches a goal position (target radius 0.03).
+**Default task**: Turn the spinner so that a target on it reaches a goal position (target radius 0.03).
+
+| Task | Description |
+|------|-------------|
+| `spin` | Spin the body as fast as possible (no target/tip in observations) |
+| `turn_easy` | Turn to a target angle (target radius 0.07) |
+| `turn_hard` (default) | Turn to a target angle (target radius 0.03) |
+
+Note: the `spin` task produces different observations than the `turn_*` tasks (no target position or distance-to-target).
 
 ```python
 world = swm.World('swm/FingerDMControl-v0', num_envs=4)
+
+# Specify a task explicitly
+world = swm.World('swm/FingerDMControl-v0', num_envs=4, task='spin')
 ```
 
 ### Environment Specs
@@ -430,6 +534,8 @@ world = swm.World('swm/FingerDMControl-v0', num_envs=4)
 | `rendering.render_target` | Discrete(2) | Whether to render the target (0: hidden, 1: visible) |
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
+
+![finger_var](../assets/finger_var.gif)
 
 ---
 
@@ -466,3 +572,67 @@ world = swm.World('swm/ManipulatorDMControl-v0', num_envs=4)
 | `rendering.render_target` | Discrete(2) | Whether to render the target (0: hidden, 1: visible) |
 | `floor.color` | Box(0, 1, shape=(2, 3)) | Checkerboard floor colors |
 | `light.intensity` | Box(0, 1, shape=(1,)) | Scene lighting intensity |
+
+---
+
+## Expert Policy
+
+An expert policy is available for all DMC environments. It can be used to collect high-quality demonstration datasets.
+
+### Training Details
+
+The expert policies were trained using the **Soft Actor-Critic (SAC)** algorithm from [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) via [`scripts/expert/train_policies.py`](../../scripts/expert/train_policies.py). Each policy operates on the environment's **feature-based observations** (joint angles, velocities, etc.) and outputs continuous actions clipped to `[-1, 1]`.
+
+Observations are normalized at inference time using running statistics saved during training (`VecNormalize` from Stable-Baselines3). Each environment's expert comes as two files:
+
+| File | Description |
+|------|-------------|
+| `expert_policy.zip` | Stable-Baselines3 SAC model checkpoint |
+| `vec_normalize.pkl` | Observation normalization statistics (`VecNormalize`) |
+
+Pre-trained checkpoints for all environments are available for download [here](https://drive.google.com/drive/folders/1tiIvhEba8qHJrohWTeV9pDzgptZsSPz1?usp=sharing).
+
+### Installation
+
+The expert policy requires `stable-baselines3` as an additional dependency:
+
+```bash
+uv add stable-baselines3
+```
+
+### Usage
+
+```python
+import os
+
+os.environ['MUJOCO_GL'] = 'egl'
+
+import stable_worldmodel as swm
+from stable_worldmodel.envs.dmcontrol import ExpertPolicy
+
+world = swm.World(
+    'swm/CheetahDMControl-v0',
+    num_envs=3,
+    image_shape=(224, 224),
+    max_episode_steps=500,
+)
+world.set_policy(
+    ExpertPolicy(
+        ckpt_path='path/to/dmc/cheetah/expert_policy.zip',
+        vec_normalize_path='path/to/dmc/cheetah/vec_normalize.pkl',
+        device='cuda',
+    )
+)
+
+world.record_video('./', max_steps=500)
+```
+
+### API Reference
+
+::: stable_worldmodel.envs.dmcontrol.ExpertPolicy
+    options:
+        heading_level: 4
+        members: false
+        show_source: false
+
+::: stable_worldmodel.envs.dmcontrol.ExpertPolicy.get_action

@@ -78,6 +78,31 @@ class BallInCupDMControlWrapper(DMControlWrapper):
                         ),
                     }
                 ),
+                'gravity': swm_space.Dict(
+                    {
+                        'x': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'y': swm_space.Box(
+                            low=-5.0,
+                            high=5.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([0.0], dtype=np.float64),
+                        ),
+                        'z': swm_space.Box(
+                            low=-20.0,
+                            high=0.0,
+                            shape=(1,),
+                            dtype=np.float64,
+                            init_value=np.array([-9.81], dtype=np.float64),
+                        ),
+                    }
+                ),
                 'floor': swm_space.Dict(
                     {
                         'color': swm_space.Box(
@@ -124,6 +149,35 @@ class BallInCupDMControlWrapper(DMControlWrapper):
                 ),
             }
         )
+
+    def apply_runtime_variations(self):
+        """Apply gravity variation directly on the compiled physics model."""
+        desired_gx = float(
+            np.asarray(self.variation_space['gravity']['x'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gy = float(
+            np.asarray(self.variation_space['gravity']['y'].value).reshape(-1)[
+                0
+            ]
+        )
+        desired_gz = float(
+            np.asarray(self.variation_space['gravity']['z'].value).reshape(-1)[
+                0
+            ]
+        )
+        self.set_gravity([desired_gx, desired_gy, desired_gz])
+
+    def eval_state(self):
+        """Returns True if the ball is currently in the cup."""
+        return bool(self.env.physics.in_target())
+
+    @property
+    def info(self):
+        info = super().info
+        info['success'] = float(self.eval_state())
+        return info
 
     def compile_model(self, seed=None, environment_kwargs=None):
         """Compile the MJCF model into DMControl env."""
@@ -287,11 +341,10 @@ class BallInCupDMControlWrapper(DMControlWrapper):
 
         if shape_id == 0:
             desired_type = 'box'
-            desired_size = np.array([0.05, 0.006, 0.05], dtype=np.float32)
         else:
             desired_type = 'sphere'
-            desired_size = np.array([0.05], dtype=np.float32)
 
+        desired_size = np.array([0.05, 0.006, 0.05], dtype=np.float32)
         if target_site.type != desired_type:
             target_changed = True
         target_site.type = desired_type

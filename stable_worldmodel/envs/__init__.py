@@ -35,12 +35,17 @@ register(
 
 register(
     id='swm/OGBCube-v0',
-    entry_point='stable_worldmodel.envs.ogbench_manip.cube_env:CubeEnv',
+    entry_point='stable_worldmodel.envs.ogbench.cube_env:CubeEnv',
 )
 
 register(
     id='swm/OGBScene-v0',
-    entry_point='stable_worldmodel.envs.ogbench_manip.scene_env:SceneEnv',
+    entry_point='stable_worldmodel.envs.ogbench.scene_env:SceneEnv',
+)
+
+register(
+    id='swm/OGBPointMaze-v0',
+    entry_point='stable_worldmodel.envs.ogbench.pointmaze_env:PointMazeEnv',
 )
 
 register(
@@ -108,11 +113,6 @@ register(
     entry_point='stable_worldmodel.envs.dmcontrol.quadruped:QuadrupedDMControlWrapper',
 )
 
-register(
-    id='swm/PinPad-v0',
-    entry_point='stable_worldmodel.envs.pinpad:PinPad',
-)
-
 
 ############
 # DISCRETE #
@@ -126,9 +126,4 @@ register(
 register(
     id='swm/PushT-Discrete-v1',
     entry_point='stable_worldmodel.envs.pusht:PushTDiscrete',
-)
-
-register(
-    id='swm/PinPad-Discrete-v0',
-    entry_point='stable_worldmodel.envs.pinpad:PinPadDiscrete',
 )
